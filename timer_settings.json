@@ -1,0 +1,23 @@
+{
+  "topmost": true,
+  "track": true,
+  "theme": "dark",
+  "mode": "stopwatch",
+  "preset_minutes": [
+    5,
+    15,
+    25,
+    50
+  ],
+  "mini_shape": "circle",
+  "mini_size": 220,
+  "hours": 0,
+  "minutes": 0,
+  "seconds": 3,
+  "save_stats": true,
+  "history": {
+    "2026-07-06": 1800000
+  },
+  "productive_ms_today": 0,
+  "current_day": "2026-07-07"
+}
