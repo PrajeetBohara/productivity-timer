@@ -1,0 +1,23 @@
+{
+  "topmost": true,
+  "track": true,
+  "theme": "dark",
+  "mode": "timer",
+  "clock_style": "ring",
+  "preset_minutes": [
+    5,
+    15,
+    25,
+    50
+  ],
+  "mini_shape": "circle",
+  "mini_size": 220,
+  "mini_ui_scale": 150,
+  "hours": 0,
+  "minutes": 25,
+  "seconds": 0,
+  "save_stats": true,
+  "history": {},
+  "productive_ms_today": 0,
+  "current_day": "2026-07-08"
+}

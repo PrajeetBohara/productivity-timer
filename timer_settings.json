@@ -3,6 +3,7 @@
   "track": true,
   "theme": "dark",
   "mode": "stopwatch",
+  "clock_style": "minimal",
   "preset_minutes": [
     5,
     15,
@@ -10,14 +11,19 @@
     50
   ],
   "mini_shape": "circle",
-  "mini_size": 220,
+  "mini_size": 371,
+  "mini_ui_scale": 150,
   "hours": 0,
   "minutes": 0,
-  "seconds": 3,
+  "seconds": 30,
   "save_stats": true,
   "history": {
-    "2026-07-06": 1800000
+    "2026-07-07": 8100000,
+    "2026-07-06": 3300000,
+    "2026-07-04": 1500000,
+    "2026-06-01": 3600000,
+    "2026-07-08": 49885
   },
-  "productive_ms_today": 0,
-  "current_day": "2026-07-07"
+  "productive_ms_today": 49885,
+  "current_day": "2026-07-08"
 }
