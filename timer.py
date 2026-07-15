@@ -6,7 +6,7 @@ import time, math, sys, os, shutil, subprocess
 import json
 import calendar
 from math import sin, cos, pi, hypot, atan2
-from datetime import datetime
+from datetime import datetime, timedelta, date
 
 import customtkinter as ctk
 
@@ -56,6 +56,7 @@ CARD_2       = ("#f1f3f9", "#232838")
 MUTED        = ("#64748b", "#94a3b8")
 TRACK_RING   = ("#e2e8f0", "#2a3040")
 SAND         = ("#d97706", "#f59e0b")
+GRAPH_LINE   = ("#ea580c", "#f97316")
 
 # clock display styles (label shown to user -> internal key)
 CLOCK_STYLE_OPTIONS = [
@@ -358,7 +359,7 @@ class TimerApp(ctk.CTk):
                       fg_color=GREEN, hover_color=GREEN_HOVER,
                       command=self._add_day_log).pack(side="left", padx=(0, 10))
         self.stats_seg = ctk.CTkSegmentedButton(
-            hright, values=["List", "Calendar"], command=self._on_stats_view,
+            hright, values=["List", "Calendar", "Graph"], command=self._on_stats_view,
             font=self.font_body)
         self.stats_seg.set("List")
         self.stats_seg.pack(side="left")
@@ -430,6 +431,31 @@ class TimerApp(ctk.CTk):
         self.cal_month_total = ctk.CTkLabel(self.cal_frame, text="", font=self.font_h2,
                                             text_color=ACCENT)
         self.cal_month_total.grid(row=3, column=0, sticky="w", padx=16, pady=(0, 12))
+
+        # graph view
+        self.graph_range = tk.StringVar(value="1M")
+        self.graph_frame = ctk.CTkFrame(page, fg_color=CARD, corner_radius=14)
+        self.graph_frame.grid_columnconfigure(0, weight=1)
+        self.graph_frame.grid_rowconfigure(1, weight=1)
+        ghead = ctk.CTkFrame(self.graph_frame, fg_color="transparent")
+        ghead.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 2))
+        ghead.grid_columnconfigure(0, weight=1)
+        self.graph_info_lbl = ctk.CTkLabel(ghead, text="", font=self.font_h2, anchor="w")
+        self.graph_info_lbl.grid(row=0, column=0, sticky="w")
+        self.graph_sub_lbl = ctk.CTkLabel(ghead, text="", font=self.font_small,
+                                          text_color=MUTED, anchor="w")
+        self.graph_sub_lbl.grid(row=1, column=0, sticky="w")
+        ctk.CTkOptionMenu(ghead, values=["1D", "1W", "1M", "3M", "YTD", "1Y", "All"],
+                          variable=self.graph_range, width=90, font=self.font_body,
+                          command=lambda _v: self._render_stats_graph()).grid(
+            row=0, column=1, rowspan=2, sticky="e")
+        self.graph_canvas = tk.Canvas(self.graph_frame, highlightthickness=0, bd=0)
+        self.graph_canvas.grid(row=1, column=0, sticky="nsew", padx=14, pady=(4, 14))
+        self._graph_points = []
+        self._graph_size = None
+        self.graph_canvas.bind("<Configure>", self._on_graph_configure)
+        self.graph_canvas.bind("<Motion>", self._on_graph_motion)
+        self.graph_canvas.bind("<Leave>", self._on_graph_leave)
 
     # ---------------------------------------------------------------- settings page
     def _build_settings_page(self):
@@ -1236,7 +1262,7 @@ class TimerApp(ctk.CTk):
 
     # ---------------------------------------------------------------- statistics
     def _on_stats_view(self, value):
-        self.stats_view.set("calendar" if value == "Calendar" else "list")
+        self.stats_view.set({"Calendar": "calendar", "Graph": "graph"}.get(value, "list"))
         self._refresh_stats()
 
     def _total_history_ms(self):
@@ -1263,13 +1289,157 @@ class TimerApp(ctk.CTk):
         self.stats_list.grid_remove()
         self.cal_frame.grid_remove()
         self.list_toolbar.grid_remove()
+        self.graph_frame.grid_remove()
         if self.stats_view.get() == "calendar":
             self.cal_frame.grid(row=3, column=0, sticky="nsew")
             self._render_stats_calendar()
+        elif self.stats_view.get() == "graph":
+            self.graph_frame.grid(row=3, column=0, sticky="nsew")
+            self._render_stats_graph()
         else:
             self.list_toolbar.grid(row=2, column=0, sticky="ew", pady=(0, 6))
             self.stats_list.grid(row=3, column=0, sticky="nsew")
             self._render_stats_list()
+
+    # ---------------------------------------------------------------- stats graph
+    def _graph_hover_fmt(self, ms):
+        return self._format_compact_ms(ms) or "0m"
+
+    def _graph_series(self):
+        """Daily (date, ms) series over the selected range, zero-filled."""
+        rows = [(d, int(ms)) for d, ms in self.history.items()
+                if int(ms) > 0 and self._is_valid_date_key(d)]
+        if not rows:
+            return []
+        today = date.today()
+        rng = self.graph_range.get()
+        if rng == "1D":
+            start = today - timedelta(days=1)
+        elif rng == "1W":
+            start = today - timedelta(days=6)
+        elif rng == "1M":
+            start = today - timedelta(days=29)
+        elif rng == "3M":
+            start = today - timedelta(days=89)
+        elif rng == "YTD":
+            start = date(today.year, 1, 1)
+        elif rng == "1Y":
+            start = today - timedelta(days=364)
+        else:  # All
+            earliest = min(datetime.strptime(d, "%Y-%m-%d").date() for d, _ in rows)
+            start = min(earliest, today - timedelta(days=6))
+        by_day = dict(rows)
+        series = []
+        day = start
+        while day <= today:
+            series.append((day, by_day.get(day.strftime("%Y-%m-%d"), 0)))
+            day += timedelta(days=1)
+        return series
+
+    def _set_graph_header(self, main, sub):
+        self.graph_info_lbl.configure(text=main)
+        self.graph_sub_lbl.configure(text=sub)
+
+    def _render_stats_graph(self):
+        self._graph_series_data = self._graph_series()
+        total = sum(ms for _, ms in self._graph_series_data)
+        desc = {"1D": "Last day", "1W": "Last 7 days", "1M": "Last 30 days",
+                "3M": "Last 3 months", "YTD": "This year", "1Y": "Last year",
+                "All": "All time"}.get(self.graph_range.get(), "")
+        if self._graph_series_data:
+            self._graph_default_header = (f"Total: {self._graph_hover_fmt(total)}", desc)
+        else:
+            self._graph_default_header = ("No data yet", "Track time to see your graph here.")
+        self._set_graph_header(*self._graph_default_header)
+        self._draw_graph()
+
+    def _draw_graph(self):
+        c = self.graph_canvas
+        if not c.winfo_exists():
+            return
+        c.delete("all")
+        self._graph_points = []
+        w = c.winfo_width()
+        h = c.winfo_height()
+        if w <= 2 or h <= 2:
+            return
+        c.configure(bg=self._resolve_color(CARD))
+        series = getattr(self, "_graph_series_data", [])
+        muted = self._resolve_color(MUTED)
+        if not series or all(ms == 0 for _, ms in series):
+            c.create_text(w / 2, h / 2, text="No tracked time in this range.",
+                          fill=muted, font=("Segoe UI", 12))
+            return
+        line = self._resolve_color(GRAPH_LINE)
+        grid = self._resolve_color(TRACK_RING)
+        ml, mr, mt, mb = 10, 10, 34, 26
+        pw = w - ml - mr
+        ph = h - mt - mb
+        max_ms = max(ms for _, ms in series) or 1
+        n = len(series)
+
+        for frac in (0.5, 1.0):
+            y = mt + ph * (1 - frac)
+            c.create_line(ml, y, w - mr, y, fill=grid, width=1)
+            c.create_text(ml + 2, y - 8, text=self._graph_hover_fmt(max_ms * frac),
+                          fill=muted, anchor="w", font=("Segoe UI", 8))
+        c.create_line(ml, mt + ph, w - mr, mt + ph, fill=grid, width=1)
+
+        pts = []
+        for i, (day, ms) in enumerate(series):
+            x = ml + (pw * i / (n - 1) if n > 1 else pw / 2)
+            y = mt + ph * (1 - ms / max_ms)
+            pts.append((x, y, day, ms))
+        self._graph_points = pts
+
+        if len(pts) >= 2:
+            flat = []
+            for x, y, _, _ in pts:
+                flat += [x, y]
+            c.create_line(*flat, fill=line, width=2, joinstyle="round", capstyle="round")
+        else:
+            x, y, _, _ = pts[0]
+            c.create_oval(x - 3, y - 3, x + 3, y + 3, fill=line, outline="")
+
+        span_days = (series[-1][0] - series[0][0]).days
+        fmt = "%b %Y" if span_days > 200 else "%d %b"
+        n_lbl = min(6, n)
+        idxs = [round(i * (n - 1) / (n_lbl - 1)) for i in range(n_lbl)] if n_lbl >= 2 else [0]
+        for i in idxs:
+            x, _, day, _ = pts[i]
+            c.create_text(x, h - mb / 2, text=day.strftime(fmt),
+                          fill=muted, font=("Segoe UI", 8))
+
+    def _on_graph_configure(self, event):
+        size = (event.width, event.height)
+        if size[0] <= 2 or size[1] <= 2 or self._graph_size == size:
+            return
+        self._graph_size = size
+        self._draw_graph()
+
+    def _on_graph_motion(self, e):
+        pts = self._graph_points
+        if not pts:
+            return
+        c = self.graph_canvas
+        c.delete("ghover")
+        x, y, day, ms = min(pts, key=lambda p: abs(p[0] - e.x))
+        w = c.winfo_width()
+        h = c.winfo_height()
+        accent = self._resolve_color(GRAPH_LINE)
+        c.create_line(x, 26, x, h - 26, fill=self._resolve_color(MUTED),
+                      width=1, tags="ghover")
+        c.create_oval(x - 4, y - 4, x + 4, y + 4, fill=accent, outline="", tags="ghover")
+        label = f"{day.strftime('%d %b')}  \u00B7  {self._graph_hover_fmt(ms)}"
+        tx = min(max(x, 60), w - 60)
+        c.create_text(tx, 12, text=label, fill=self._resolve_color(("#1e293b", "#e5e7eb")),
+                      font=("Segoe UI", 9, "bold"), tags="ghover")
+        self._set_graph_header(self._graph_hover_fmt(ms), day.strftime("%A, %d %B %Y"))
+
+    def _on_graph_leave(self, _e=None):
+        self.graph_canvas.delete("ghover")
+        if hasattr(self, "_graph_default_header"):
+            self._set_graph_header(*self._graph_default_header)
 
     def _render_stats_list(self):
         for child in self.stats_list.winfo_children():

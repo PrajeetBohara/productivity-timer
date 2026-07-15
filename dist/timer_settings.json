@@ -2,8 +2,8 @@
   "topmost": true,
   "track": true,
   "theme": "dark",
-  "mode": "timer",
-  "clock_style": "ring",
+  "mode": "stopwatch",
+  "clock_style": "bar",
   "preset_minutes": [
     5,
     15,
@@ -11,13 +11,23 @@
     50
   ],
   "mini_shape": "circle",
-  "mini_size": 220,
-  "mini_ui_scale": 150,
-  "hours": 0,
-  "minutes": 25,
+  "mini_size": 294,
+  "mini_ui_scale": 141,
+  "hours": 20,
+  "minutes": 0,
   "seconds": 0,
   "save_stats": true,
-  "history": {},
+  "history": {
+    "2026-07-06": 7200000,
+    "2026-07-07": 14400000,
+    "2026-07-08": 15401576,
+    "2026-07-09": 18090130,
+    "2026-07-10": 21600000,
+    "2026-07-11": 13781011,
+    "2026-07-12": 19344979,
+    "2026-07-13": 15205112,
+    "2026-07-14": 18000000
+  },
   "productive_ms_today": 0,
-  "current_day": "2026-07-08"
+  "current_day": "2026-07-15"
 }
